@@ -2,17 +2,15 @@ import streamlit as st
 import os
 import sys
 import tempfile
-import shutil
 import re
 import html
 import json
 import ast
-import threading
 from datetime import datetime
 
-# --- THƯ VIỆN XỬ LÝ FILE (Back-end cũ) ---
+# --- THƯ VIỆN XỬ LÝ FILE ---
 from pypdf import PdfWriter, PdfReader
-from docx2pdf import convert as convert_docx
+# Đã xóa docx2pdf vì không chạy được trên Linux Web
 import pandas as pd
 from PIL import Image as PILImage, ImageDraw, ImageFont
 
@@ -22,18 +20,16 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as ReportLabImage, XPreformatted
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import inch, cm
+from reportlab.lib.units import cm
 from reportlab.lib.fonts import addMapping
-from reportlab.lib.enums import TA_JUSTIFY, TA_LEFT, TA_CENTER
+from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER
 from xhtml2pdf import pisa
 
 # ==============================================================================
-# 1. HỆ THỐNG CẤU HÌNH (GIỮ NGUYÊN)
+# 1. HỆ THỐNG CẤU HÌNH
 # ==============================================================================
-# Cấu hình trang Web
 st.set_page_config(page_title="PDF Tool Pro V25", page_icon="📄", layout="wide")
 
-# CSS để làm đẹp giao diện Gradient
 st.markdown("""
 <style>
     .main { background-color: #f8f9fa; }
@@ -66,8 +62,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def register_vietnamese_font():
-    """Đăng ký font Roboto (Web version - cần file font cùng thư mục)"""
-    font_path = "Roboto-Regular.ttf" # Web path đơn giản hơn
+    font_path = "Roboto-Regular.ttf"
     font_name = "VietFont"
     if not os.path.exists(font_path): return "Helvetica", "" 
     try:
@@ -83,7 +78,7 @@ def register_vietnamese_font():
     except Exception: return "Helvetica", ""
 
 # ==============================================================================
-# 2. LOGIC BACKEND (COPY 100% TỪ V25 - KHÔNG SỬA ĐỔI)
+# 2. LOGIC BACKEND
 # ==============================================================================
 class PDFProcessor:
     PAGE_WIDTH, PAGE_HEIGHT = A4
@@ -197,7 +192,11 @@ class PDFProcessor:
             base = os.path.basename(input_path); ext = os.path.splitext(input_path)[1].lower().replace('.', '')
             out = os.path.join(output_folder, os.path.splitext(base)[0] + ".pdf") if output_folder else os.path.splitext(input_path)[0] + "_converted.pdf"
             font, css = register_vietnamese_font()
-            if ext == 'docx': convert_docx(input_path, out); return out
+            
+            if ext == 'docx':
+                # FIX: Web version không hỗ trợ Word
+                log_func("⚠️ File Word (.docx) không hỗ trợ trên phiên bản Web (Linux). Vui lòng dùng bản EXE trên PC.")
+                return None 
             elif ext in ['jpg', 'png', 'jpeg', 'bmp']:
                 img = PDFProcessor._create_image_flowable(input_path)
                 if img: SimpleDocTemplate(out, pagesize=A4, rightMargin=1.5*cm, leftMargin=1.5*cm, topMargin=1.5*cm, bottomMargin=1.5*cm).build([img]); return out
@@ -349,6 +348,7 @@ def save_uploaded_file(uploaded_file):
 
 # --- HEADER & SIDEBAR ---
 st.title("📄 PDF Tool Pro V25 (Web Edition)")
+st.caption("✨ Phiên bản tối ưu cho Web/Mobile (Không hỗ trợ file Word docx)")
 st.markdown("---")
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["Ghép File", "Tách File", "Chuyển Đổi", "Trích Xuất", "Làm Sạch Data"])
@@ -399,7 +399,8 @@ with tab2:
 # --- TAB 3: CONVERT ---
 with tab3:
     st.header("Chuyển đổi sang PDF")
-    up_conv = st.file_uploader("Chọn file (Word, Excel, Ảnh, Text...)", accept_multiple_files=True, key="conv")
+    st.info("Hỗ trợ: Excel (.xlsx), Text (.txt, .md), Ảnh (.jpg, .png). ❌ Không hỗ trợ Word (.docx)")
+    up_conv = st.file_uploader("Chọn file...", accept_multiple_files=True, key="conv")
     smart_merge = st.checkbox("Gộp tất cả kết quả thành 1 file PDF duy nhất?")
     
     if st.button("Convert") and up_conv:
