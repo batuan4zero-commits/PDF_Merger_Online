@@ -8,9 +8,8 @@ import json
 import ast
 from datetime import datetime
 
-# --- THƯ VIỆN XỬ LÝ FILE ---
+# --- THƯ VIỆN XỬ LÝ FILE (Đã loại bỏ docx2pdf) ---
 from pypdf import PdfWriter, PdfReader
-# Đã xóa docx2pdf vì không chạy được trên Linux Web
 import pandas as pd
 from PIL import Image as PILImage, ImageDraw, ImageFont
 
@@ -30,6 +29,7 @@ from xhtml2pdf import pisa
 # ==============================================================================
 st.set_page_config(page_title="PDF Tool Pro V25", page_icon="📄", layout="wide")
 
+# CSS giao diện
 st.markdown("""
 <style>
     .main { background-color: #f8f9fa; }
@@ -194,8 +194,7 @@ class PDFProcessor:
             font, css = register_vietnamese_font()
             
             if ext == 'docx':
-                # FIX: Web version không hỗ trợ Word
-                log_func("⚠️ File Word (.docx) không hỗ trợ trên phiên bản Web (Linux). Vui lòng dùng bản EXE trên PC.")
+                log_func("⚠️ File Word (.docx) không hỗ trợ trên Web.")
                 return None 
             elif ext in ['jpg', 'png', 'jpeg', 'bmp']:
                 img = PDFProcessor._create_image_flowable(input_path)
@@ -269,14 +268,12 @@ class PDFProcessor:
 
     @staticmethod
     def clean_data_structure(input_path, output_path, log_func=print):
-        # LOGIC TỐI ƯU CẤU TRÚC (COPY TỪ V25)
         try:
             log_func(f"Đang xử lý file (Mode: Optimized Structure)...")
             with open(input_path, 'r', encoding='utf-8') as f: content = f.read()
             cleaned = []
             is_transcript = False
             
-            # Transcript JSON
             try:
                 data_json = json.loads(content)
                 if isinstance(data_json, dict) and "events" in data_json:
@@ -292,7 +289,6 @@ class PDFProcessor:
                         is_transcript = True
             except: pass
 
-            # Role/Parts Log
             if not is_transcript:
                 try:
                     ds = ast.literal_eval(content)
@@ -334,10 +330,9 @@ class PDFProcessor:
             log_func(f"Lỗi Critical (Cleaner): {e}"); traceback.print_exc(); return False
 
 # ==============================================================================
-# 3. STREAMLIT UI (THAY THẾ TKINTER UI)
+# 3. STREAMLIT UI
 # ==============================================================================
 
-# Helper: Lưu file upload vào temp để xử lý
 def save_uploaded_file(uploaded_file):
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
@@ -346,14 +341,12 @@ def save_uploaded_file(uploaded_file):
     except Exception as e:
         return None
 
-# --- HEADER & SIDEBAR ---
 st.title("📄 PDF Tool Pro V25 (Web Edition)")
 st.caption("✨ Phiên bản tối ưu cho Web/Mobile (Không hỗ trợ file Word docx)")
 st.markdown("---")
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["Ghép File", "Tách File", "Chuyển Đổi", "Trích Xuất", "Làm Sạch Data"])
 
-# --- TAB 1: GHÉP PDF ---
 with tab1:
     st.header("Ghép nhiều file PDF")
     uploaded_files = st.file_uploader("Chọn các file PDF (Kéo thả vào đây)", type=["pdf"], accept_multiple_files=True)
@@ -371,43 +364,34 @@ with tab1:
             finally:
                 for fp in file_paths: os.remove(fp)
 
-# --- TAB 2: TÁCH FILE ---
 with tab2:
     st.header("Tách nhỏ file PDF")
     up_split = st.file_uploader("Chọn file PDF cần tách", type=["pdf"], key="split")
     pages_per = st.number_input("Số trang mỗi file con", min_value=1, value=1)
-    
     if st.button("Tách File") and up_split:
         with st.spinner("Đang tách..."):
             fp = save_uploaded_file(up_split)
             try:
                 res_files = PDFProcessor.split_pdf(fp, pages_per)
                 st.success(f"Đã tách thành {len(res_files)} file!")
-                
-                # Zip lại để tải 1 lần cho tiện
                 import zipfile
                 zip_path = tempfile.mktemp(suffix=".zip")
                 with zipfile.ZipFile(zip_path, 'w') as zipf:
                     for rf in res_files:
                         zipf.write(rf, os.path.basename(rf))
-                
                 with open(zip_path, "rb") as f:
                     st.download_button("Tải Tất Cả (ZIP)", f, file_name="split_files.zip", mime="application/zip")
-            except Exception as e:
-                st.error(f"Lỗi: {e}")
+            except Exception as e: st.error(f"Lỗi: {e}")
 
-# --- TAB 3: CONVERT ---
 with tab3:
     st.header("Chuyển đổi sang PDF")
     st.info("Hỗ trợ: Excel (.xlsx), Text (.txt, .md), Ảnh (.jpg, .png). ❌ Không hỗ trợ Word (.docx)")
     up_conv = st.file_uploader("Chọn file...", accept_multiple_files=True, key="conv")
     smart_merge = st.checkbox("Gộp tất cả kết quả thành 1 file PDF duy nhất?")
-    
     if st.button("Convert") and up_conv:
         with st.spinner("Đang chuyển đổi..."):
             file_paths = [save_uploaded_file(f) for f in up_conv]
             temp_dir = tempfile.mkdtemp()
-            
             try:
                 if smart_merge:
                     out_path = os.path.join(temp_dir, "SmartMerged.pdf")
@@ -415,7 +399,7 @@ with tab3:
                     with open(out_path, "rb") as f:
                         st.download_button("Tải File Gộp", f, file_name="converted_merged.pdf")
                 else:
-                    # Convert từng file và zip lại
+                    import zipfile
                     zip_path = tempfile.mktemp(suffix=".zip")
                     with zipfile.ZipFile(zip_path, 'w') as zipf:
                         for fp in file_paths:
@@ -423,20 +407,16 @@ with tab3:
                             if res: zipf.write(res, os.path.basename(res))
                     with open(zip_path, "rb") as f:
                         st.download_button("Tải File (ZIP)", f, file_name="converted.zip")
-            except Exception as e:
-                st.error(f"Lỗi: {e}")
+            except Exception as e: st.error(f"Lỗi: {e}")
 
-# --- TAB 4: TRÍCH XUẤT ---
 with tab4:
     st.header("Trích xuất Text / Ảnh từ PDF")
     up_ext = st.file_uploader("File PDF nguồn", type=["pdf"], key="ext")
     mode = st.radio("Chế độ:", ["Lấy Text (.txt)", "Lấy Ảnh (ZIP)", "Lấy Ảnh + Layout (ZIP)"])
-    
     if st.button("Trích xuất") and up_ext:
         with st.spinner("Đang xử lý..."):
             fp = save_uploaded_file(up_ext)
             temp_dir = tempfile.mkdtemp()
-            
             try:
                 if mode == "Lấy Text (.txt)":
                     out_txt = os.path.join(temp_dir, "extracted.txt")
@@ -447,7 +427,7 @@ with tab4:
                 else:
                     create_layout = "Layout" in mode
                     PDFProcessor.extract_images_smart(fp, temp_dir, create_layout)
-                    # Zip images
+                    import zipfile
                     zip_path = tempfile.mktemp(suffix=".zip")
                     with zipfile.ZipFile(zip_path, 'w') as zipf:
                         for root, dirs, files in os.walk(temp_dir):
@@ -455,24 +435,18 @@ with tab4:
                                 zipf.write(os.path.join(root, file), file)
                     with open(zip_path, "rb") as f:
                         st.download_button("Tải Ảnh (ZIP)", f, file_name="images.zip")
-            except Exception as e:
-                st.error(f"Lỗi: {e}")
+            except Exception as e: st.error(f"Lỗi: {e}")
 
-# --- TAB 5: CLEAN DATA ---
 with tab5:
     st.header("Làm sạch Data (Transcript/JSON)")
     st.info("Hỗ trợ: JSON Transcript (Events), Log Gemini. Tự động gộp đoạn văn, loại bỏ xuống dòng thừa.")
     up_clean = st.file_uploader("Upload file Data (.txt, .json)", key="clean")
-    
     if st.button("Clean Data") and up_clean:
         with st.spinner("Analyzing & Cleaning..."):
             fp = save_uploaded_file(up_clean)
             out_path = tempfile.mktemp(suffix=".txt")
-            
-            # Hàm log giả lập để hiển thị lên web
             log_container = st.empty()
             def web_log(msg): log_container.text(f"Log: {msg}")
-            
             if PDFProcessor.clean_data_structure(fp, out_path, web_log):
                 with open(out_path, "r", encoding="utf-8") as f:
                     st.success("Làm sạch thành công!")
